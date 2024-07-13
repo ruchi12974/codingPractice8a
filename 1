@@ -1,0 +1,94 @@
+const express = require("express");
+const { open } = require("sqlite");
+const sqlite3 = require("sqlite3");
+const path = require("path");
+const dbPath = path.join(__dirname, "todoApplication.db");
+
+const app = express();
+app.use(express.json());
+let db = null;
+const initializeDbAndServer = async () => {
+  try {
+    db = await open({ filename: dbPath, driver: sqlite3.Database });
+    app.listen(3000, () => {
+      console.log("server running at https://localhost:3000");
+    });
+  } catch (error) {
+    console.log(error.message);
+    process.exit(1);
+  }
+};
+
+initializeDbAndServer();
+
+app.get("/todos/", async (request, response) => {
+  let sqlQuery;
+  const { status, priority, search_q = "" } = request.query;
+  switch (true) {
+    case status !== undefined && priority !== undefined:
+      sqlQuery = `SELECT * FROM todo WHERE todo LIKE '%${search_q}%' AND status = ${status} AND priority = ${priority};`;
+      break;
+    case status !== undefined:
+      sqlQuery = `SELECT * FROM todo WHERE todo LIKE '%${search_q}%' AND status = ${status} ;`;
+      break;
+    case priority !== undefined:
+      sqlQuery = `SELECT * FROM todo WHERE todo LIKE '%${search_q}%' AND priority = ${priority} ;`;
+      break;
+    default:
+      sqlQuery = `SELECT * FROM todo WHERE todo LIKE '%${search_q}%';`;
+      break;
+  }
+  const responseArray = await db.all(sqlQuery);
+  response.send(responseArray);
+});
+
+app.get("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  const query = `SELECT * FROM todo WHERE id = ${todoId};`;
+  const responseObj = await db.get(query);
+  response.send(responseObj);
+});
+
+app.post("/todos/", async (request, response) => {
+  const { id, todo, priority, status } = request.body;
+  const query = `INSERT INTO todo (id, todo, priority, status) 
+    VALUES ('${id}', '${todo}', '${priority}', '${status}');`;
+  await db.run(query);
+  response.send("Todo Successfully Added");
+});
+
+app.put("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  const query1 = `SELECT * FROM todo WHERE id = ${todoId};`;
+  const response1 = await db.get(query1);
+  const {
+    status = response1.status,
+    priority = response1.priority,
+    todo = response1.todo,
+  } = request.body;
+
+  let responseText;
+  switch (true) {
+    case status !== undefined:
+      responseText = "Status Updated";
+      break;
+    case priority !== undefined:
+      responseText = "Priority Updated";
+      break;
+    default:
+      responseText = "Todo Updated";
+      break;
+  }
+  const query = `UPDATE todo SET status = ${status}, priority = ${priority}, todo = ${todo} WHERE id = ${todoId};`;
+  await db.run(query);
+  response.send(responseText);
+});
+
+app.delete("/todos/:todoId/", async (request, response) => {
+  const { todoId } = request.params;
+  const query = `DELETE FROM todo WHERE id = ${todoId};`;
+  await db.run(query);
+  response.send("Todo Deleted");
+});
+
+module.exports = app;
